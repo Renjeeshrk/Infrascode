@@ -1,0 +1,100 @@
+# Azure Provider source and version being used
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "=3.0.0"
+    }
+  }
+}
+# Configure the Microsoft Azure Provider
+provider "azurerm" {
+  features {}
+}
+# Create a Resouce group 
+
+resource "azurerm_resource_group" "bu1infra" {
+  name     = "az-bu1-infra-rg01"
+  location = "East US"
+}
+# Create Virtual network 
+
+resource "azurerm_network_security_group" "bu1infra" {
+  name                = "az-bu1-main-vnet01_nsgmain"
+  location            = azurerm_resource_group.bu1infra.location
+  resource_group_name = azurerm_resource_group.bu1infra.name
+}
+resource "azurerm_virtual_network" "bu1infra" {
+    name = "az-bu1-main-vnet01"
+    location = azurerm_resource_group.bu1infra.location
+    resource_group_name = azurerm_resource_group.bu1infra.name
+    address_space = [ "192.168.0.0/16"]
+    dns_servers = ["192.168.0.10","192.168.0.11"]
+  
+    subnet  {
+      name = "az-bu1-main-vnet01-sub-hub"
+      address_prefix = "192.168.20.0/23"
+
+    }
+
+}
+resource "azurerm_subnet" "bu1infra" {
+  name                 = "az-bu1-main-vnet01-sub-adds"
+  resource_group_name  = azurerm_resource_group.bu1infra.name
+  virtual_network_name = azurerm_virtual_network.bu1infra.name
+  address_prefixes =  ["192.168.0.0/22"]
+}
+# Create First Domain controller in Azure 
+resource "azurerm_network_interface" "bu1infra" {
+  name                = "my-network-interface"
+  location            = azurerm_resource_group.bu1infra.location
+  resource_group_name = azurerm_resource_group.bu1infra.name
+
+  ip_configuration {
+    name                          = "az-dc-01-nic01"
+    subnet_id                     = azurerm_subnet.bu1infra.id
+    private_ip_address_allocation = "Static"
+    private_ip_address  = "192.168.0.10"
+  }
+}
+# Create Windows Server 2019 Virtual Machine with Managed Disk
+resource "azurerm_virtual_machine" "bu1infra" {
+  name                  = "US-dc-01"
+  location              = azurerm_resource_group.bu1infra.location
+  resource_group_name   = azurerm_resource_group.bu1infra.name
+  network_interface_ids = [azurerm_network_interface.bu1infra.id]
+
+  vm_size = "Standard_DS2_v2"
+
+  storage_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2019-Datacenter"
+    version   = "latest"
+  }
+  os_profile {
+    computer_name  = "AZ-DC-01"
+    admin_username = "ad***a" # Replace with your desired user name
+    admin_password = "a*****"  # Replace with your desired password
+  }
+
+  storage_os_disk {
+    name              = "osdisk"
+    caching           = "ReadWrite"
+    create_option     = "FromImage"
+    managed_disk_type = "Standard_LRS"
+  }
+  os_profile_windows_config {
+    
+  }
+ # Managed Disk for the VM
+  storage_data_disk {
+    name              = "Datadisk"
+    disk_size_gb      = 128
+    lun               = 0
+    create_option     = "Empty"
+    managed_disk_type = "Standard_LRS"
+  }
+  # Optional: Add any additional configuration you need for the VM
+}
+
